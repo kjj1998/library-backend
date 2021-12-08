@@ -4,7 +4,8 @@
   "description": "A simple GraphQL backend for a small library",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon index.js"
   },
   "author": "Koh Jun Jie",
   "license": "MIT",
@@ -13,5 +14,8 @@
     "apollo-server-core": "^3.5.0",
     "graphql": "^15.8.0",
     "uuid": "^8.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15"
   }
 }

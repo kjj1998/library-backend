@@ -88,18 +88,41 @@ let books = [
   },
 ]
 
+/* Schemas for the library */
 const typeDefs = gql`
+	type Book {
+		title: String!
+		published: Int!
+		author: String!
+		id: ID!
+		genres: [String]
+	}
+
+	type Author {
+		name: String!
+		born: Int
+		id: ID!
+	}
   type Query {
+		bookCount: Int!
+		authorCount: Int!
   }
 `
 
+/* defines how GraphQL queries are responded to */
 const resolvers = {
   Query: {
+		bookCount: () => {
+			return books.length
+		},
+		authorCount: () => {
+			return authors.length
+		},
   }
 }
 
 const server = new ApolloServer({
-  typeDefs,
+  typeDefs,		// the GraphQL schema
   resolvers,
 })
 
