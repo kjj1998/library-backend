@@ -118,7 +118,9 @@ const resolvers = {
 		authorCount: () => {
 			return authors.length
 		},
-		allBooks: () => books
+		allBooks: () => {
+			return books
+		}
   }
 }
 
