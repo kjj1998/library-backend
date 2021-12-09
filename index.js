@@ -118,6 +118,10 @@ const typeDefs = gql`
 			published: Int!
 			genres: [String]
 		): Book
+		editAuthor(
+			name: String!
+			setBornTo: Int!
+		): Author
 	}
 `
 
@@ -189,10 +193,27 @@ const resolvers = {
 		addBook: (root, args) => {
 			/* 
 			 * Add a book to the lists of book in the library 
-			*/
+			 */
 			const book = { ...args, id: uuid() }
 			books = books.concat(book)
 			return book
+		},
+		editAuthor: (root, args) => {
+			/*
+			 * Look for an author in the list of authors and set his birth year.
+			 * If the author is not present, return null, else return the author with
+			 * his birth year set to the setBornTo parameter
+			 */
+			let editedAuthor = null
+			authors = authors.map(author => {
+				if (author.name === args.name) {
+					author.born = args.setBornTo
+					editedAuthor = author
+				}
+				return author
+			})
+			
+			return editedAuthor
 		}
 	}
 }
