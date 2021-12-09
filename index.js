@@ -106,7 +106,7 @@ const typeDefs = gql`
   type Query {
 		bookCount: Int!
 		authorCount: Int!
-		allBooks: [Book!]!
+		allBooks(author: String): [Book!]!
 		allAuthors: [Author!]!
   }
 `
@@ -120,8 +120,19 @@ const resolvers = {
 		authorCount: () => {
 			return authors.length	// return the total number of authors
 		},
-		allBooks: () => {
-			return books	// return the array of all Book objects
+		allBooks: (root, args) => {
+			if (args.author) {
+				/* 
+				 * If the optional parameter author is present,
+				 * return all books written by that author
+				*/
+				return books.filter(book => 
+					book.author === args.author
+				)
+			}
+			else {
+				return books	// return the array of all Book objects
+			}
 		},
 		allAuthors: () => {
 			/* 
@@ -129,14 +140,14 @@ const resolvers = {
 			 * loop through each book and increment bookCount if author of book
 			 * matches name of the author. Return a list of the authors with 
 			 * book counts.
-			 */ 
+			 */
 			let authorsWithBookCount = []
 			authors.map(author => {
 				let bookCount = 0
 				books.map(book => {
-					 if (book.author === author.name) {
-						 bookCount += 1
-					 }
+					if (book.author === author.name) {
+						bookCount += 1
+					}
 				})
 				const authorWithBookCount = { ...author, bookCount }
 				authorsWithBookCount = authorsWithBookCount.concat(authorWithBookCount)
