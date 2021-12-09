@@ -1,4 +1,6 @@
 const { ApolloServer, gql } = require('apollo-server')
+const { UniqueDirectiveNamesRule } = require('graphql')
+const { v1: uuid } = require('uuid')
 
 let authors = [
   {
@@ -109,6 +111,14 @@ const typeDefs = gql`
 		allBooks(author: String, genre: String): [Book!]!
 		allAuthors: [Author!]!
   }
+	type Mutation {
+		addBook(
+			title: String!
+			author: String!
+			published: Int!
+			genres: [String]
+		): Book
+	}
 `
 
 /* defines how GraphQL queries are responded to */
@@ -174,7 +184,17 @@ const resolvers = {
 			
 			return authorsWithBookCount
 		}
-  }
+  },
+	Mutation: {
+		addBook: (root, args) => {
+			/* 
+			 * Add a book to the lists of book in the library 
+			*/
+			const book = { ...args, id: uuid() }
+			books = books.concat(book)
+			return book
+		}
+	}
 }
 
 const server = new ApolloServer({
