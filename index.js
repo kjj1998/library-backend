@@ -1,4 +1,4 @@
-const { ApolloServer, gql } = require('apollo-server')
+const { ApolloServer, gql, UserInputError } = require('apollo-server')
 const { UniqueDirectiveNamesRule } = require('graphql')
 const { v1: uuid } = require('uuid')
 
@@ -174,6 +174,7 @@ const resolvers = {
 			 * matches name of the author. Return a list of the authors with 
 			 * book counts.
 			 */
+
 			let authorsWithBookCount = []
 			authors.map(author => {
 				let bookCount = 0
@@ -192,8 +193,18 @@ const resolvers = {
 	Mutation: {
 		addBook: (root, args) => {
 			/* 
-			 * Add a book to the lists of book in the library 
+			 * Add a book to the lists of book in the library
+			 * Throw a UserInputError if title is not unique
 			 */
+			if (args.title === "" || args.author === "" || args.published === null) {
+				throw new UserInputError('The title, author and published fields must all have valid values')
+			}
+
+			if (books.find(b => b.title === args.title)) {
+        throw new UserInputError('Title must be unique', {
+          invalidArgs: args.name,
+        })
+      }
 			const book = { ...args, id: uuid() }
 			books = books.concat(book)
 			return book
