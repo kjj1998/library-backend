@@ -1,6 +1,19 @@
 const { ApolloServer, gql, UserInputError } = require('apollo-server')
-const { UniqueDirectiveNamesRule } = require('graphql')
 const { v1: uuid } = require('uuid')
+const mongoose = require('mongoose')
+const Book = require('./models/book')
+
+const MONGODB_URI = 'mongodb+srv://admin:fullstackopen2021@mycluster.xnorb.mongodb.net/library?retryWrites=true&w=majority'
+
+console.log('connecting to', MONGODB_URI)
+
+mongoose.connect(MONGODB_URI)
+	.then(() => {
+		console.log('connected to MongoDB')
+	})
+	.catch((error) => {
+		console.log('error connection to MongoDB:', error.message)
+	})
 
 let authors = [
   {
@@ -95,7 +108,7 @@ const typeDefs = gql`
 	type Book {
 		title: String!
 		published: Int!
-		author: String!
+		author: Author!
 		id: ID!
 		genres: [String]
 	}
@@ -186,7 +199,7 @@ const resolvers = {
 				const authorWithBookCount = { ...author, bookCount }
 				authorsWithBookCount = authorsWithBookCount.concat(authorWithBookCount)
 			})
-			
+			authors = authorsWithBookCount
 			return authorsWithBookCount
 		}
   },
