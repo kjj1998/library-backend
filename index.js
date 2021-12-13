@@ -96,13 +96,13 @@ const resolvers = {
 				 * that genre
 				*/
 				const author = await Author.findOne({ name: args.author }) // find the author
-				const books = await Book.find({ 
+				const books = await Book.find({		// find all books that contain the specific genres and is written by the specific author
 					genres: { $in: [args.genre] },
 					author: { $in: [author._id] }
 				})
 				
 				const unresolvedBooks = books.map(async (book) => await book.populate('author'))	// populate the author field
-				const resolvedBooks = await Promise.all(unresolvedBooks)
+				const resolvedBooks = await Promise.all(unresolvedBooks)		// resolve the array of promises
 
 				return resolvedBooks
 			}
@@ -127,6 +127,8 @@ const resolvers = {
 				 * If only the optional parameter genre is present,
 				 * return all books that belong to that genre
 				*/
+
+				/* Find all documents in the Book collection where the genres field contains the genres given */
 				const books = await Book.find({
 					genres: { $in: [args.genre] }
 				})
@@ -136,6 +138,9 @@ const resolvers = {
 				return resolvedBooks
 			}
 			else {
+				/* 
+				 * Find all documents in the Book collection
+				 */
 				const books = await Book.find({})
 				const unresolvedBooks = books.map(async (book) => await book.populate('author'))
 				const resolvedBooks = await Promise.all(unresolvedBooks)
@@ -165,11 +170,10 @@ const resolvers = {
 					}
 				})
 
-				let authorWithBookCount = { ...author.toJSON(), bookCount: bookCount }
+				let authorWithBookCount = { ...author.toJSON(), bookCount: bookCount }	// create new object with the bookCount field, author object has to be jsonified to remove unnecessary fields
 				return authorWithBookCount
 			})
 			
-			console.log(authors)
 			return authors
 		}
   },
@@ -203,7 +207,7 @@ const resolvers = {
 				if (args.author.length < 4) {
 					throw new UserInputError('The length of the author\'s name must be at least 4 characters long')
 				}
-				author = Author({ name: args.author, born: null })
+				author = Author({ name: args.author, born: null })		// create new author using the Author schema
 				try {
 					await author.save()
 				} catch (error) {
@@ -213,7 +217,7 @@ const resolvers = {
 				}
 			}
 
-			const book = new Book({ ...args, author: author._id })
+			const book = new Book({ ...args, author: author._id })	// create new book using the Book schema
 			await book.populate('author')
 			
 			try {
@@ -266,12 +270,13 @@ const resolvers = {
 				throw new UserInputError("wrong credentials")
 			}
 
+			/* creates user token */
 			const userForToken = {
 				username: user.username,
 				id: user._id,
 			}
 
-			return { value: jwt.sign(userForToken, JWT_SECRET) }
+			return { value: jwt.sign(userForToken, JWT_SECRET) }	// signs the user token using jsonwebtoken
 		},
 	}
 }
@@ -280,7 +285,9 @@ const server = new ApolloServer({
   typeDefs,		// the GraphQL schema
   resolvers,
 	context: async ({ req }) => {
-		const auth = req ? req.headers.authorization : null
+		const auth = req ? req.headers.authorization : null		// retrieve the headers authorization if it exists
+		
+		/* verify token is correct and find the current user from the database */
 		if (auth && auth.toLowerCase().startsWith('bearer ')) {
 			const decodedToken = jwt.verify(
 				auth.substring(7), JWT_SECRET
