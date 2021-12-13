@@ -1,8 +1,13 @@
-const { ApolloServer, gql, UserInputError } = require('apollo-server')
+const { ApolloServer, gql, UserInputError, AuthenticationError } = require('apollo-server')
 const { v1: uuid } = require('uuid')
 const mongoose = require('mongoose')
+
 const Book = require('./models/book')
 const Author = require('./models/author')
+const User = require('./models/user')
+
+const jwt = require('jsonwebtoken')
+const JWT_SECRET = 'NEED_HERE_A_SECRET_KEY'
 
 const MONGODB_URI = 'mongodb+srv://admin:fullstackopen2021@mycluster.xnorb.mongodb.net/library?retryWrites=true&w=majority'
 
@@ -17,10 +22,6 @@ mongoose.connect(MONGODB_URI)
 	})
 
 /*
- * Suomi:
- * Saattaisi olla järkevämpää assosioida kirja ja sen tekijä tallettamalla kirjan yhteyteen tekijän nimen sijaan tekijän id
- * Yksinkertaisuuden vuoksi tallennamme kuitenkin kirjan yhteyteen tekijän nimen
- *
  * English:
  * It might make more sense to associate a book with its author by storing the author's id in the context of the book instead of the author's name
  * However, for simplicity, we will store the author's name in connection with the book
@@ -41,11 +42,20 @@ const typeDefs = gql`
 		id: ID!
 		bookCount: Int
 	}
+	type User {
+		username: String!
+		favoriteGenre: String!
+		id: ID!
+	}
+	type Token {
+		value: String!
+	}
   type Query {
 		bookCount: Int!
 		authorCount: Int!
 		allBooks(author: String, genre: String): [Book!]!
 		allAuthors: [Author!]!
+		me: User
   }
 	type Mutation {
 		addBook(
@@ -58,6 +68,14 @@ const typeDefs = gql`
 			name: String!
 			setBornTo: Int!
 		): Author
+		createUser(
+			username: String!
+			favoriteGenre: String!
+		): User
+		login(
+			username: String!
+			password: String!
+		): Token
 	}
 `
 
@@ -94,6 +112,7 @@ const resolvers = {
 				 * return all books written by that author
 				*/
 				const author = await Author.findOne({ name: args.author })
+				
 				/* Find all documents in the Book collection where the author field contains the id given */
 				const books = await Book.find({
 					author: { $in: [author._id] }
@@ -155,10 +174,14 @@ const resolvers = {
 		}
   },
 	Mutation: {
-		addBook: async (root, args) => {
+		addBook: async (root, args, { currentUser }) => {
 			/* 
 			 * Add a book to the list of books in the library
 			 */
+			if (!currentUser) {
+				throw new AuthenticationError("not authenticated")
+			}
+
 			if (args.title === "" || args.author === "" || args.published === null) {
 				throw new UserInputError('The title, author and published fields must all have valid values')
 			}
@@ -190,8 +213,6 @@ const resolvers = {
 				}
 			}
 
-			console.log(author)
-
 			const book = new Book({ ...args, author: author._id })
 			await book.populate('author')
 			
@@ -205,12 +226,16 @@ const resolvers = {
 
 			return book
 		},
-		editAuthor: async (root, args) => {
+		editAuthor: async (root, args, { currentUser }) => {
 			/*
 			 * Look for an author in the list of authors and set his birth year.
 			 * If the author is not present, return null, else return the author with
 			 * his birth year set to the setBornTo parameter
 			 */
+			if (!currentUser) {
+				throw new AuthenticationError("not authenticated")
+			}
+
 			const author = await Author.findOne({ name: args.name })
 			author.born = args.setBornTo
 
@@ -223,13 +248,47 @@ const resolvers = {
 			}
 			
 			return author
-		}
+		},
+		createUser: async (root, args) => {
+			const user = new User({ username: args.username, favoriteGenre: args.favoriteGenre })
+
+			return user.save()
+				.catch(error => {
+					throw new UserInputError(error.message, {
+						invalidArgs: args,
+					})
+				})
+		},
+		login: async (root, args) => {
+			const user = await User.findOne({ username: args.username })
+
+			if ( !user || args.password !== 'secret' ) {
+				throw new UserInputError("wrong credentials")
+			}
+
+			const userForToken = {
+				username: user.username,
+				id: user._id,
+			}
+
+			return { value: jwt.sign(userForToken, JWT_SECRET) }
+		},
 	}
 }
 
 const server = new ApolloServer({
   typeDefs,		// the GraphQL schema
   resolvers,
+	context: async ({ req }) => {
+		const auth = req ? req.headers.authorization : null
+		if (auth && auth.toLowerCase().startsWith('bearer ')) {
+			const decodedToken = jwt.verify(
+				auth.substring(7), JWT_SECRET
+			)
+			let currentUser = await User.findById(decodedToken.id)
+			return { currentUser }
+		}
+	}
 })
 
 server.listen().then(({ url }) => {
