@@ -17,34 +17,6 @@ mongoose.connect(MONGODB_URI)
 	})
 
 /*
-let authors = [
-  {
-    name: 'Robert Martin',
-    id: "afa51ab0-344d-11e9-a414-719c6709cf3e",
-    born: 1952,
-  },
-  {
-    name: 'Martin Fowler',
-    id: "afa5b6f0-344d-11e9-a414-719c6709cf3e",
-    born: 1963
-  },
-  {
-    name: 'Fyodor Dostoevsky',
-    id: "afa5b6f1-344d-11e9-a414-719c6709cf3e",
-    born: 1821
-  },
-  { 
-    name: 'Joshua Kerievsky', // birthyear not known
-    id: "afa5b6f2-344d-11e9-a414-719c6709cf3e",
-  },
-  { 
-    name: 'Sandi Metz', // birthyear not known
-    id: "afa5b6f3-344d-11e9-a414-719c6709cf3e",
-  },
-]
-*/
-
-/*
  * Suomi:
  * Saattaisi olla järkevämpää assosioida kirja ja sen tekijä tallettamalla kirjan yhteyteen tekijän nimen sijaan tekijän id
  * Yksinkertaisuuden vuoksi tallennamme kuitenkin kirjan yhteyteen tekijän nimen
@@ -52,60 +24,6 @@ let authors = [
  * English:
  * It might make more sense to associate a book with its author by storing the author's id in the context of the book instead of the author's name
  * However, for simplicity, we will store the author's name in connection with the book
-*/
-
-/*
-let books = [
-  {
-    title: 'Clean Code',
-    published: 2008,
-    author: 'Robert Martin',
-    id: "afa5b6f4-344d-11e9-a414-719c6709cf3e",
-    genres: ['refactoring']
-  },
-  {
-    title: 'Agile software development',
-    published: 2002,
-    author: 'Robert Martin',
-    id: "afa5b6f5-344d-11e9-a414-719c6709cf3e",
-    genres: ['agile', 'patterns', 'design']
-  },
-  {
-    title: 'Refactoring, edition 2',
-    published: 2018,
-    author: 'Martin Fowler',
-    id: "afa5de00-344d-11e9-a414-719c6709cf3e",
-    genres: ['refactoring']
-  },
-  {
-    title: 'Refactoring to patterns',
-    published: 2008,
-    author: 'Joshua Kerievsky',
-    id: "afa5de01-344d-11e9-a414-719c6709cf3e",
-    genres: ['refactoring', 'patterns']
-  },  
-  {
-    title: 'Practical Object-Oriented Design, An Agile Primer Using Ruby',
-    published: 2012,
-    author: 'Sandi Metz',
-    id: "afa5de02-344d-11e9-a414-719c6709cf3e",
-    genres: ['refactoring', 'design']
-  },
-  {
-    title: 'Crime and punishment',
-    published: 1866,
-    author: 'Fyodor Dostoevsky',
-    id: "afa5de03-344d-11e9-a414-719c6709cf3e",
-    genres: ['classic', 'crime']
-  },
-  {
-    title: 'The Demon ',
-    published: 1872,
-    author: 'Fyodor Dostoevsky',
-    id: "afa5de04-344d-11e9-a414-719c6709cf3e",
-    genres: ['classic', 'revolution']
-  },
-]
 */
 
 /* Schemas for the library */
@@ -121,6 +39,7 @@ const typeDefs = gql`
 		name: String!
 		born: Int
 		id: ID!
+		bookCount: Int
 	}
   type Query {
 		bookCount: Int!
@@ -151,40 +70,61 @@ const resolvers = {
 		authorCount: () => {
 			return Author.collection.countDocuments()	// return the total number of authors
 		},
-		allBooks: (root, args) => {
+		allBooks: async (root, args) => {
 			if (args.author && args.genre) {
 				/*
 				 * If both optional parameters are present,
 				 * return all books written by that author which belongs to
 				 * that genre
 				*/
-				return books.filter(book => {
-					return book.genres.find(genre => genre === args.genre) && 
-						book.author === args.author
+				const author = await Author.findOne({ name: args.author }) // find the author
+				const books = await Book.find({ 
+					genres: { $in: [args.genre] },
+					author: { $in: [author._id] }
 				})
+				
+				const unresolvedBooks = books.map(async (book) => await book.populate('author'))	// populate the author field
+				const resolvedBooks = await Promise.all(unresolvedBooks)
+
+				return resolvedBooks
 			}
 			else if (args.author) {
 				/* 
 				 * If only the optional parameter author is present,
 				 * return all books written by that author
 				*/
-				return books.filter(book => 
-					book.author === args.author
-				)
+				const author = await Author.findOne({ name: args.author })
+				/* Find all documents in the Book collection where the author field contains the id given */
+				const books = await Book.find({
+					author: { $in: [author._id] }
+				})
+				const unresolvedBooks = books.map(async (book) => await book.populate('author'))
+				const resolvedBooks = await Promise.all(unresolvedBooks)
+
+				return resolvedBooks
 			}
 			else if (args.genre) {
 				/* 
 				 * If only the optional parameter genre is present,
 				 * return all books that belong to that genre
 				*/
-				return books.filter(book =>
-					book.genres.find(genre => genre === args.genre))
+				const books = await Book.find({
+					genres: { $in: [args.genre] }
+				})
+				const unresolvedBooks = books.map(async (book) => await book.populate('author'))
+				const resolvedBooks = await Promise.all(unresolvedBooks)
+
+				return resolvedBooks
 			}
 			else {
-				return books	// return the array of all Book objects
+				const books = await Book.find({})
+				const unresolvedBooks = books.map(async (book) => await book.populate('author'))
+				const resolvedBooks = await Promise.all(unresolvedBooks)
+
+				return resolvedBooks
 			}
 		},
-		allAuthors: () => {
+		allAuthors: async () => {
 			/* 
 			 * Loop through each author in the list and for each author
 			 * loop through each book and increment bookCount if author of book
@@ -192,39 +132,69 @@ const resolvers = {
 			 * book counts.
 			 */
 
-			let authorsWithBookCount = []
-			authors.map(author => {
+			let authors = await Author.find({})
+			let books = await Book.find({})
+			books = books.map(async (book) => await book.populate('author'))
+			books = await Promise.all(books)
+			
+			
+			authors = authors.map(author => {
 				let bookCount = 0
 				books.map(book => {
-					if (book.author === author.name) {
+					if (book.author.name === author.name) {
 						bookCount += 1
 					}
 				})
-				const authorWithBookCount = { ...author, bookCount }
-				authorsWithBookCount = authorsWithBookCount.concat(authorWithBookCount)
+
+				let authorWithBookCount = { ...author.toJSON(), bookCount: bookCount }
+				return authorWithBookCount
 			})
-			authors = authorsWithBookCount
-			return authorsWithBookCount
+			
+			console.log(authors)
+			return authors
 		}
   },
 	Mutation: {
 		addBook: async (root, args) => {
 			/* 
-			 * Add a book to the lists of book in the library
-			 * Throw a UserInputError if title is not unique
+			 * Add a book to the list of books in the library
 			 */
 			if (args.title === "" || args.author === "" || args.published === null) {
 				throw new UserInputError('The title, author and published fields must all have valid values')
 			}
 
-			// if (books.find(b => b.title === args.title)) 
-			if (Book.findOne({ title: args.title })) {
+			if (args.title.length < 2) {
+				throw new UserInputError('The length of the title must be at least 2 characters long')
+			}
+
+			// Throw a UserInputError if title is not unique
+			if (await Book.findOne({ title: args.title })) {
         throw new UserInputError('Title must be unique', {
           invalidArgs: args.name,
         })
       }
 
-			const book = new Book({ ...args })
+			// Create author if author does not exist
+			let author = await Author.findOne({ name: args.author })
+			if (!author) {
+				if (args.author.length < 4) {
+					throw new UserInputError('The length of the author\'s name must be at least 4 characters long')
+				}
+				author = Author({ name: args.author, born: null })
+				try {
+					await author.save()
+				} catch (error) {
+					throw new UserInputError(error.message, {
+						invalidArgs: args,
+					})
+				}
+			}
+
+			console.log(author)
+
+			const book = new Book({ ...args, author: author._id })
+			await book.populate('author')
+			
 			try {
 				await book.save()
 			} catch (error) {
