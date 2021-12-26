@@ -1,4 +1,13 @@
-const { ApolloServer, gql, UserInputError, AuthenticationError } = require('apollo-server')
+const { createServer } = require('http')
+const { execute, subscribe } = require('graphql')
+const { SubscriptionServer } = require('subscriptions-transport-ws')
+const { makeExecutableSchema } = require('@graphql-tools/schema')
+const { ApolloServer, gql, UserInputError, AuthenticationError } = require('apollo-server-express')
+const { PubSub } = require('graphql-subscriptions')
+
+const pubsub = new PubSub()
+const express = require('express')
+const cors = require('cors')
 const { v1: uuid } = require('uuid')
 const mongoose = require('mongoose')
 
@@ -8,7 +17,6 @@ const User = require('./models/user')
 
 const jwt = require('jsonwebtoken')
 const JWT_SECRET = 'NEED_HERE_A_SECRET_KEY'
-
 const MONGODB_URI = 'mongodb+srv://admin:fullstackopen2021@mycluster.xnorb.mongodb.net/library?retryWrites=true&w=majority'
 
 console.log('connecting to', MONGODB_URI)
@@ -40,7 +48,6 @@ const typeDefs = gql`
 		name: String!
 		born: Int
 		id: ID!
-		bookCount: Int
 	}
 	type User {
 		username: String!
@@ -49,6 +56,7 @@ const typeDefs = gql`
 	}
 	type Token {
 		value: String!
+		favoriteGenre: String!
 	}
   type Query {
 		bookCount: Int!
@@ -76,6 +84,9 @@ const typeDefs = gql`
 			username: String!
 			password: String!
 		): Token
+	}
+	type Subscription {
+		bookAdded: Book!
 	}
 `
 
@@ -157,23 +168,6 @@ const resolvers = {
 			 */
 
 			let authors = await Author.find({})
-			let books = await Book.find({})
-			books = books.map(async (book) => await book.populate('author'))
-			books = await Promise.all(books)
-			
-			
-			authors = authors.map(author => {
-				let bookCount = 0
-				books.map(book => {
-					if (book.author.name === author.name) {
-						bookCount += 1
-					}
-				})
-
-				let authorWithBookCount = { ...author.toJSON(), bookCount: bookCount }	// create new object with the bookCount field, author object has to be jsonified to remove unnecessary fields
-				return authorWithBookCount
-			})
-			
 			return authors
 		}
   },
@@ -228,6 +222,8 @@ const resolvers = {
 				})
 			}
 
+			pubsub.publish('BOOK_ADDED', { bookAdded: book})
+
 			return book
 		},
 		editAuthor: async (root, args, { currentUser }) => {
@@ -276,18 +272,77 @@ const resolvers = {
 				id: user._id,
 			}
 
-			return { value: jwt.sign(userForToken, JWT_SECRET) }	// signs the user token using jsonwebtoken
+			return { 
+				value: jwt.sign(userForToken, JWT_SECRET),
+				favoriteGenre: user.favoriteGenre 
+			}	// signs the user token using jsonwebtoken
 		},
-	}
+	},
+	Subscription: {
+		bookAdded: {
+			subscribe: () => pubsub.asyncIterator(['BOOK_ADDED'])
+		},
+	},
 }
 
+const Start = async () => {
+	const app = express()
+	app.use(cors())
+
+	const httpServer = createServer(app)
+
+	const schema = makeExecutableSchema({
+		typeDefs,
+		resolvers
+	})
+	const subscriptionServer = SubscriptionServer.create(
+		{ schema, execute, subscribe },
+		{ server: httpServer, path: '/graphql' }
+	)
+
+	const server = new ApolloServer({
+		schema,
+		plugins: [{
+			async serverWillStart() {
+        return {
+          async drainServer() {
+            subscriptionServer.close();
+          }
+        };
+      }
+		}],
+		context: async ({ req }) => {
+			const auth = req ? req.headers.authorization : null		// retrieve the headers authorization if it exists
+			
+			/* verify token is correct and find the current user from the database */
+			if (auth && auth.toLowerCase().startsWith('bearer ')) {
+				const decodedToken = jwt.verify(
+					auth.substring(7), JWT_SECRET
+				)
+				let currentUser = await User.findById(decodedToken.id)
+				return { currentUser }
+			}
+		}
+	})
+	await server.start()
+	server.applyMiddleware({ app })
+
+	const PORT = 4000
+	httpServer.listen(PORT, () => {
+    console.log(`Server is now running on http://localhost:${PORT}/graphql`)
+	});
+}
+
+Start()
+
+/*
 const server = new ApolloServer({
   typeDefs,		// the GraphQL schema
   resolvers,
 	context: async ({ req }) => {
 		const auth = req ? req.headers.authorization : null		// retrieve the headers authorization if it exists
 		
-		/* verify token is correct and find the current user from the database */
+		verify token is correct and find the current user from the database
 		if (auth && auth.toLowerCase().startsWith('bearer ')) {
 			const decodedToken = jwt.verify(
 				auth.substring(7), JWT_SECRET
@@ -300,4 +355,4 @@ const server = new ApolloServer({
 
 server.listen().then(({ url }) => {
   console.log(`Server ready at ${url}`)
-})
+})*/
